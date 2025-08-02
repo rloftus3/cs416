@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="grid.css">
+  <meta charset="UTF-8">
+  <script src='https://d3js.org/d3.v5.min.js'></script>
+</head>
+<body onload='init()'>
+
+<div class="container">
+	<div class="header">
+		<h1>Webpage Template</h1>
+  </div>
+
+  <div class="main">
+    <svg width=300 height=300>
+    </svg>
+    <script>
+      //d3 code here
+      async function init() {
+
+        var margin = 50;
+        var width = 300;
+        var height = 300;
+
+        var x = d3.scaleLog([10,150],[0, width-(2*margin)]);
+        var y = d3.scaleLog([10,150],[height-(2*margin), 0]);
+        
+        const data = await d3.csv('https://flunky.github.io/cars2017.csv');
+
+        d3.select('svg').append('g')
+  .attr('transform', 'translate('+margin+','+margin+')');
+
+d3.select('g').selectAll('circle').data(data).enter().append('circle')
+  .attr('cx', function(d) {return x(d.AverageCityMPG)})
+  .attr('cy', function(d) {return y(d.AverageHighwayMPG)})
+  .attr('r', function(d) {return d.EngineCylinders * 1 + 2});
+
+d3.select('svg').append('g')
+  .attr('transform', 'translate('+margin+','+margin+')')
+  .call(d3.axisLeft(y)
+    .tickValues([10, 20, 50, 100]).tickFormat(d3.format('~s')));
+
+d3.select('svg').append('g')
+  .attr('transform', 'translate('+margin+','+(height-margin)+')')
+  .call(d3.axisBottom(x)
+    .tickValues([10, 20, 50, 100]).tickFormat(d3.format('~s')));
+
+        
+      }
+    </script>
+  </div> 
+    
+  <div class="right">Annotations</div>
+
+  <div class="nav">&#x1F808; Back &nbsp; Forward &#x1F80A;</div>
+</div>
+
+</body>
+</html>
