@@ -1,0 +1,37 @@
+.container {
+  display: grid;
+  grid-template-areas:
+  'header header header'
+  'main main right'
+  'main main nav';
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 3px;
+  background-color: #2196F3;
+  //padding: 1px;
+}
+
+.container > div {
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 10px;
+}
+
+.header {
+	grid-area: header;
+  text-align: center;
+}
+
+.main {
+  grid-area: main;
+}
+
+.right {
+  grid-area: right;
+}
+
+.nav {
+  grid-area: nav;
+}
+
+.footer {
+  grid-area: footer;
+}
