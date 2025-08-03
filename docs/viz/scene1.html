@@ -4,19 +4,10 @@
 <link rel="stylesheet" href="grid.css">
 <meta charset="UTF-8">
 <script src='https://d3js.org/d3.v5.min.js'></script>
-</head>
-<body onload='init()'>
-
-<div class="container">
-<div class="header">
-	<h1>Webpage Template</h1>
-</div>
-
-<div class="main">
-<svg width=300 height=300>
-</svg>
 <script>
 //d3 code here
+const debug = false;
+
 async function init() {
 
 var margin = 50;
@@ -26,29 +17,113 @@ var height = 300;
 var x = d3.scaleLog([10,150],[0, width-(2*margin)]);
 var y = d3.scaleLog([10,150],[height-(2*margin), 0]);
 
-const data = await d3.csv('https://flunky.github.io/cars2017.csv');
+const rawdata = await d3.csv('https://flunky.github.io/cars2017.csv');
 
+function log( msg ) {
+  if ( debug ) {
+    console.log( msg );
+  }
+}
+
+
+// filter out all but Gasoline engines with > 3 cylinders
+// at the same time, gather data for making avgMPG per Make
+var filtered = [];
+var mpgs_by_make = [];
+rawdata.forEach( function(d) {
+  if (d.Fuel == "Gasoline" && d.EngineCylinders > 3) {
+    // filter out all but Gasoline engines with > 3 cylinders
+    filtered.push( {
+        "Make": d.Make,
+        "EngineCylinders": d.EngineCylinders,
+        "AverageHighwayMPG": d.AverageHighwayMPG,
+        "AverageCityMPG": d.AverageCityMPG,
+      }
+    );
+    // gather data for making avgMPG per Make
+    if ( ! (d.Make in mpgs_by_make) ) {
+      mpgs_by_make[ d.Make ] = [];
+    }
+    if ( ! ( d.EngineCylinders in mpgs_by_make[d.Make] ) ) {
+      mpgs_by_make[ d.Make ][ d.EngineCylinders ] = [];
+    }
+    for ( let k of ["AverageHighwayMPG", "AverageCityMPG"]) {
+      if ( ! (k in mpgs_by_make[d.Make][d.EngineCylinders] ) ) {
+        mpgs_by_make[d.Make][d.EngineCylinders][k] = [];
+        //log( "adding empty "+k+" for "+d.Make+" with numCyls "+d.EngineCylinders )
+      }
+      mpgs_by_make[d.Make][d.EngineCylinders][k].push( d[k] );
+    }
+  }
+} );
+//log(">>> START FILTERED");
+//log(filtered);
+//log("<<< END FILTERED");
+log(">>> START MPGS_by_make");
+log(mpgs_by_make);
+log(">>> END MPGS_by_make");
+
+// Now resonstruct data with new AvgCityMPG and AvgHighwayMPG
+//var data = filtered;
+var data = [];
+//log( "Time to make the data" );
+//log( "Array length is "+mpgs_by_make.length );
+//log( "Type is "+typeof mpgs_by_make );
+for ( var make of Object.keys(mpgs_by_make) ) {
+  //log( "Make:"+make );
+  for ( var cyls of Object.keys(mpgs_by_make[make]) ) {
+    log( "Make:"+make+" Cylinders:"+cyls );
+    let newdata = {
+      "Make": make,
+      "EngineCylinders": cyls,
+      "AverageHighwayMPG": d3.mean( mpgs_by_make[make][cyls]["AverageHighwayMPG"] ),
+      "AverageCityMPG": d3.mean( mpgs_by_make[make][cyls]["AverageCityMPG"] ),
+    };
+    //log( newdata );
+    data.push( newdata );
+  }
+}
+log(">>> START data");
+log(data);
+log(">>> END data");
+
+// set svg size
+d3.select('svg').attr("width",width).attr("height",height);
+
+// set graph size
 d3.select('svg').append('g')
-.attr('transform', 'translate('+margin+','+margin+')');
+  .attr('transform', 'translate('+margin+','+margin+')');
 
+// make graph
 d3.select('g').selectAll('circle').data(data).enter().append('circle')
-.attr('cx', function(d) {return x(d.AverageCityMPG)})
-.attr('cy', function(d) {return y(d.AverageHighwayMPG)})
-.attr('r', function(d) {return d.EngineCylinders * 1 + 2});
+  .attr('cx', function(d) {return x(d.AverageCityMPG)})
+  .attr('cy', function(d) {return y(d.AverageHighwayMPG)})
+  .attr('r', function(d) {return d.EngineCylinders * 1 + 2});
 
+// make y axis
 d3.select('svg').append('g')
-.attr('transform', 'translate('+margin+','+margin+')')
-.call(d3.axisLeft(y)
-.tickValues([10, 20, 50, 100]).tickFormat(d3.format('~s')));
+  .attr('transform', 'translate('+margin+','+margin+')')
+  .call(d3.axisLeft(y)
+    .tickValues([10, 20, 50, 100]).tickFormat(d3.format('~s')));
 
+// make x axis
 d3.select('svg').append('g')
-.attr('transform', 'translate('+margin+','+(height-margin)+')')
-.call(d3.axisBottom(x)
-.tickValues([10, 20, 50, 100]).tickFormat(d3.format('~s')));
-
+  .attr('transform', 'translate('+margin+','+(height-margin)+')')
+  .call(d3.axisBottom(x)
+    .tickValues([10, 20, 50, 100]).tickFormat(d3.format('~s')));
 
 }
 </script>
+</head>
+<body onload='init()'>
+
+<div class="container">
+<div class="header">
+	<h1>Webpage Template</h1>
+</div>
+
+<div class="main">
+<svg></svg>
 </div> 
 
 <div class="right">Annotations</div>
