@@ -1,1 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="grid.css">
+<link rel="stylesheet" href="data.css">
+<meta charset="UTF-8">
+<script src='https://d3js.org/d3.v5.min.js'></script>
+<script>
+// adapted from https://d3-graph-gallery.com/graph/barplot_grouped_basicWide.html
+const debug = true;
+function log( msg ) {
+  if ( debug ) {
+    console.log( msg );
+  }
+}
 
+// process user input from URL GET
+const query = window.location.search;
+const urlParms = new URLSearchParams( query );
+const valid_cylinders = [ 4, 6, 8, 10, 12 ];
+var num_cylinders = Number( urlParms.get( 'num_cylinders' ) );
+const num_type = typeof num_cylinders;
+log( `Num cylinders type: ${num_type}` );
+if ( ! ( valid_cylinders.includes( num_cylinders ) ) ) {
+  num_cylinders = 4;
+  log( 'using default num cylinders' );
+}
+log( `User Requested numcylinders: ${num_cylinders}` );
+
+async function init() {
+
+// Set subtitle text based on user selection
+d3.select("#cyl_subtitle")
+  .html(`Now showing: ${num_cylinders} Cylinder Engines`)
+
+// Set selection options base on valid_cylinders & show user's last selection
+d3.select("#num_cylinders") //this is the <select> html element
+  .selectAll('option')
+  .data(valid_cylinders)
+  .enter()
+  .append('option')
+    .text( d => d )
+    .property( "value", d => d )
+    .property( "selected", d => (d == num_cylinders) ? true : false )
+
+
+const margin = 100;
+const width_range = [ 400, 900 ] 
+var width;
+const height = 400;
+
+const rawdata = await d3.csv('https://flunky.github.io/cars2017.csv');
+//log(rawdata);
+const subgroups = [ 'cityavg', 'highwayavg' ];
+
+// filter out all but Gasoline engines with requested number of cylinders
+// at the same time, gather data for making avgMPG per Make
+var mpgs_by_make = [];
+rawdata.forEach( function(d) {
+  if (d.Fuel == "Gasoline" && d.EngineCylinders == num_cylinders) {
+    // gather data for making avgMPG per Make
+    if ( ! (d.Make in mpgs_by_make) ) {
+      mpgs_by_make[ d.Make ] = {
+        'city': [],
+        'highway': [],
+      };
+    }
+    mpgs_by_make[ d.Make ][ 'city' ].push( d.AverageCityMPG );
+    mpgs_by_make[ d.Make ][ 'highway' ].push( d.AverageHighwayMPG );
+  }
+} );
+log(">>> START mpgs_by_make");
+log(mpgs_by_make);
+log(">>> END mpgs_by_make");
+
+// Construct manufacturer data with min, max, avg
+var manf_data = [];
+var manf_indices = [];
+var i = 0;
+for ( var make of Object.keys( mpgs_by_make ) ) {
+  let row = { 'make': make };
+  for ( let k of [ 'city', 'highway' ] ) {
+    row[ `${k}min` ] = d3.min( mpgs_by_make[ make ][ k ] );
+    row[ `${k}max` ] = d3.max( mpgs_by_make[ make ][ k ] );
+    row[ `${k}avg` ] = d3.mean( mpgs_by_make[ make ][ k ] );
+  }
+  manf_data.push( row );
+  manf_indices.push(i++);
+}
+log(">>> START manf data");
+log(manf_data);
+log("<<< END manf data");
+log( `Manf Indices: ${manf_indices}` );
+
+// Adjust graph width for number of manufacturers
+log( `num manufacturers: ${manf_indices.length}` );
+const wx = d3.scaleLinear()
+  .domain( [1, 30] )
+  .rangeRound( width_range )
+width = wx(manf_indices.length)
+log( `graph width: ${width}` );
+
+// scale for group per manufacturer
+const fx = d3.scaleBand()
+  .domain( manf_indices )
+  .range( [margin, width-margin] )
+  .padding(0.2)
+;
+
+// scale for each MPG rect
+const x = d3.scaleBand()
+  .domain( subgroups )
+  .range( [0, fx.bandwidth()] )
+  .padding(0.05)
+;
+
+// scale for Y direction of graph
+const y = d3.scaleLinear()
+  .domain( [0, 40] )
+  .range( [height-margin, margin] )
+;
+
+const color = d3.scaleOrdinal()
+  .domain(subgroups)
+  .range( [ '#e41a1c', '#377eb8' ] )
+;
+
+const rect_styles = d3.scaleOrdinal()
+  .domain(subgroups)
+  .range( [ '#e41a1c', '#377eb8' ] )
+;
+
+// get the svg
+const svg = d3.select('svg');
+
+// set svg size
+svg.attr("width",width).attr("height",height);
+
+// append a group for each manufacturer and a rect for each avgMPG
+svg.selectAll('g').data(manf_data).enter().append('g')
+  .attr("transform", (d,i) => `translate(${fx(i)},0)`)
+  .selectAll('rect')
+  //.data( d => subgroups.map( k => {'key': k, 'value': d[k]} ) )
+  .data(
+    function(d) {
+      return subgroups.map(
+        function(k) {
+          return {'key': k, 'value': d[k]}
+        }
+      )
+    }
+  )
+  .enter().append('rect')
+    .attr('x', d => x(d.key))
+    .attr('y', d => y(d.value))
+    .attr('width', x.bandwidth())
+    .attr('height', d => height - margin - y(d.value))
+    .attr('fill', d => color(d.key) )
+
+// make Y-axis
+svg.append('g')
+  .attr('transform', `translate(${margin},0)`)
+  .call(d3.axisLeft(y));
+
+// Label Y-axis
+svg.append('text')
+  .attr( 'transform', 'rotate(-90)' )
+  .attr( 'x', 0 - height/2 )
+  .attr( 'y', margin / 2 )
+  .attr( 'dy', '-0.3em' )
+  .style( 'text-anchor', 'middle' )
+  .text( 'Average MPG' )
+
+// make X-axis
+svg.append('g')
+  .attr('transform', `translate(0,${height-margin})`)
+  .call(d3.axisBottom(fx)
+    .tickFormat( (d,i) => manf_data[i].make )
+  )
+  .selectAll('text')
+    .attr("transform", "translate(-10,10)rotate(-45)")
+    .style('text-anchor', 'end')
+
+// Label X-axis
+svg.append('text')
+  .attr( 'x', width/2 )
+  .attr( 'y', height-(margin/2) )
+  .attr( 'dy', '1em' )
+  .style( 'text-anchor', 'middle' )
+  .text( 'Manufacturer' )
+
+
+} // END async function init()
+
+</script>
+</head>
+<body onload='init()'>
+
+<div class="container">
+<div class="header">
+	<h1>Average MPG vs. Manufacturer</h1>
+  <h3 id="cyl_subtitle">4 Cylinder Engines Only</h3>
+</div>
+
+<div class="main">
+<svg></svg>
+</div> 
+
+<div class="right">
+  <table>
+    <tr>
+      <th colspan=2>Legend</th>
+    </tr>
+    <tr>
+      <td>City MPG Average</td>
+      <td class="citympg"><pre>        </pre></td>
+    </tr>
+    <tr>
+      <td>Highway MPG Average</td>
+      <td class="highwaympg"><pre>        </pre></td>
+    </tr>
+  </table>
+  <table>
+  <p> &nbsp; </p>
+  <tr><th class="explore">Self exploration exercise</th></tr>
+  <tr><td class="explore">
+  <p>
+    Use the selection box below to view avg mpg per manufacturer for other engine sizes.
+  </p>
+  <p>
+    <form method="get">
+      <label for="num_cylinders">Cylinder count:</label>
+      <select name="num_cylinders" id="num_cylinders">
+      </select>
+      <br />
+      <input type="submit" value="Update graph">
+    </form>
+  </p>
+  </td></tr>
+  </table>
+</div>
+
+<div class="nav">
+  <p>
+    <a href="scene2.html">&#x1F808; Back</a>
+    &nbsp;
+    Forward &#x1F80A;
+  </p>
+</div>
+
+</div>
+
+</body>
+</html>
