@@ -2,22 +2,22 @@
 <html>
 <head>
 <link rel="stylesheet" href="grid.css">
+<link rel="stylesheet" href="data.css">
 <meta charset="UTF-8">
 <script src='https://d3js.org/d3.v5.min.js'></script>
 <script>
 //d3 code here
-const debug = false;
+// adapted from https://d3-graph-gallery.com/graph/barplot_grouped_basicWide.html
+const debug = true;
 
 async function init() {
 
 var margin = 50;
-var width = 300;
-var height = 300;
-
-var x = d3.scaleLog([10,150],[0, width-(2*margin)]);
-var y = d3.scaleLog([10,150],[height-(2*margin), 0]);
+var width = 400;
+var height = 400;
 
 const rawdata = await d3.csv('https://flunky.github.io/cars2017.csv');
+const subgroups = [ 'cityavg', 'highwayavg' ];
 
 function log( msg ) {
   if ( debug ) {
@@ -25,110 +25,160 @@ function log( msg ) {
   }
 }
 
+//log(rawdata);
+
 
 // filter out all but Gasoline engines with > 3 cylinders
-// at the same time, gather data for making avgMPG per Make
-var filtered = [];
-var mpgs_by_make = [];
+// at the same time, gather data for making avgMPG per cylinder_qty
+var mpg_by_cyl = [];
 rawdata.forEach( function(d) {
   if (d.Fuel == "Gasoline" && d.EngineCylinders > 3) {
-    // filter out all but Gasoline engines with > 3 cylinders
-    filtered.push( {
-        "Make": d.Make,
-        "EngineCylinders": d.EngineCylinders,
-        "AverageHighwayMPG": d.AverageHighwayMPG,
-        "AverageCityMPG": d.AverageCityMPG,
-      }
-    );
-    // gather data for making avgMPG per Make
-    if ( ! (d.Make in mpgs_by_make) ) {
-      mpgs_by_make[ d.Make ] = [];
+    // collect data by cylinder
+    if ( ! ( d.EngineCylinders in mpg_by_cyl ) ) {
+      mpg_by_cyl[ d.EngineCylinders ] = {
+        "city": [],
+        "highway": [],
+      };
     }
-    if ( ! ( d.EngineCylinders in mpgs_by_make[d.Make] ) ) {
-      mpgs_by_make[ d.Make ][ d.EngineCylinders ] = [];
-    }
-    for ( let k of ["AverageHighwayMPG", "AverageCityMPG"]) {
-      if ( ! (k in mpgs_by_make[d.Make][d.EngineCylinders] ) ) {
-        mpgs_by_make[d.Make][d.EngineCylinders][k] = [];
-        //log( "adding empty "+k+" for "+d.Make+" with numCyls "+d.EngineCylinders )
-      }
-      mpgs_by_make[d.Make][d.EngineCylinders][k].push( d[k] );
-    }
+    mpg_by_cyl[ d.EngineCylinders ]["city"].push( d.AverageCityMPG );
+    mpg_by_cyl[ d.EngineCylinders ]["highway"].push( d.AverageHighwayMPG );
   }
 } );
-//log(">>> START FILTERED");
-//log(filtered);
-//log("<<< END FILTERED");
-log(">>> START MPGS_by_make");
-log(mpgs_by_make);
-log(">>> END MPGS_by_make");
+log(">>> START mpg_by_cyl");
+log(mpg_by_cyl);
+log("<<< END mpg_by_cyl");
 
-// Now resonstruct data with new AvgCityMPG and AvgHighwayMPG
-//var data = filtered;
-var data = [];
-//log( "Time to make the data" );
-//log( "Array length is "+mpgs_by_make.length );
-//log( "Type is "+typeof mpgs_by_make );
-for ( var make of Object.keys(mpgs_by_make) ) {
-  //log( "Make:"+make );
-  for ( var cyls of Object.keys(mpgs_by_make[make]) ) {
-    log( "Make:"+make+" Cylinders:"+cyls );
-    let newdata = {
-      "Make": make,
-      "EngineCylinders": cyls,
-      "AverageHighwayMPG": d3.mean( mpgs_by_make[make][cyls]["AverageHighwayMPG"] ),
-      "AverageCityMPG": d3.mean( mpgs_by_make[make][cyls]["AverageCityMPG"] ),
-    };
-    //log( newdata );
-    data.push( newdata );
+// Construct cylinder data with min, max, avg
+var cyl_data = [];
+for ( var c_count of Object.keys( mpg_by_cyl ) ) {
+  //log( `Cylinder: ${c_count}` )
+  let row = { 'qty': c_count };
+  for ( let k of [ "city", "highway" ] ) {
+    row[ `${k}min` ] = d3.min( mpg_by_cyl[ c_count ][ k ] );
+    row[ `${k}max` ] = d3.max( mpg_by_cyl[ c_count ][ k ] );
+    row[ `${k}avg` ] = d3.mean( mpg_by_cyl[ c_count ][ k ] );
   }
+  cyl_data.push( row );
 }
-log(">>> START data");
-log(data);
-log(">>> END data");
+log(">>> START cylinder data");
+log(cyl_data);
+log("<<< END cylinder data");
+
+
+// make scales
+const fx = d3.scaleBand()
+  .domain( [0,1,2,3,4] )
+  .range( [margin, width-margin] )
+  .padding(0.2)
+;
+const x = d3.scaleBand()
+  .domain( subgroups )
+  .range( [0, fx.bandwidth()] )
+  .padding(0.05)
+;
+const y = d3.scaleLinear()
+  .domain( [0, 40] )
+  .range( [height-margin, margin] )
+;
+const color = d3.scaleOrdinal()
+  .domain(subgroups)
+  .range( [ '#e41a1c', '#377eb8' ] )
+;
+
+// get the svg
+const svg = d3.select('svg');
 
 // set svg size
-d3.select('svg').attr("width",width).attr("height",height);
+svg.attr("width",width).attr("height",height);
 
-// set graph size
-d3.select('svg').append('g')
-  .attr('transform', 'translate('+margin+','+margin+')');
+// append a group for each cylinder-count and a rect for each avgMPG
+svg.selectAll('g').data(cyl_data).enter().append('g')
+  .attr("transform", (d,i) => `translate(${fx(i)},0)`)
+  .selectAll('rect')
+  //.data( d => subgroups.map( k => {'key': k, 'value': d[k]} ) )
+  .data(
+    function(d) {
+      return subgroups.map(
+        function(k) {
+          return {'key': k, 'value': d[k]}
+        }
+      )
+    }
+  )
+  .enter().append('rect')
+    .attr('x', d => x(d.key))
+    .attr('y', d => y(d.value))
+    .attr('width', x.bandwidth())
+    .attr('height', d => height - margin - y(d.value))
+    .attr('fill', d => color(d.key) )
 
-// make graph
-d3.select('g').selectAll('circle').data(data).enter().append('circle')
-  .attr('cx', function(d) {return x(d.AverageCityMPG)})
-  .attr('cy', function(d) {return y(d.AverageHighwayMPG)})
-  .attr('r', function(d) {return d.EngineCylinders * 1 + 2});
+// make Y-axis
+svg.append('g')
+  .attr('transform', `translate(${margin},0)`)
+  .call(d3.axisLeft(y));
 
-// make y axis
-d3.select('svg').append('g')
-  .attr('transform', 'translate('+margin+','+margin+')')
-  .call(d3.axisLeft(y)
-    .tickValues([10, 20, 50, 100]).tickFormat(d3.format('~s')));
+// Label Y-axis
+svg.append('text')
+  .attr( 'transform', 'rotate(-90)' )
+  .attr( 'x', 0 - height/2 )
+  .attr( 'y', margin / 2 )
+  .attr( 'dy', '-0.3em' )
+  .style( 'text-anchor', 'middle' )
+  .text( 'Average MPG' )
 
-// make x axis
-d3.select('svg').append('g')
-  .attr('transform', 'translate('+margin+','+(height-margin)+')')
-  .call(d3.axisBottom(x)
-    .tickValues([10, 20, 50, 100]).tickFormat(d3.format('~s')));
+// make X-axis
+svg.append('g')
+  .attr('transform', `translate(0,${height-margin})`)
+  .call(d3.axisBottom(fx)
+    .tickFormat( (d,i) => cyl_data[i].qty )
+  );
 
+// Label X-axis
+svg.append('text')
+  .attr( 'x', width/2 )
+  .attr( 'y', height-(margin/2) )
+  .attr( 'dy', '1em' )
+  .style( 'text-anchor', 'middle' )
+  .text( 'Number of cylinders' )
 }
+
 </script>
 </head>
 <body onload='init()'>
 
 <div class="container">
 <div class="header">
-	<h1>Webpage Template</h1>
+	<h1>Average MPG vs. Number of Cylinders</h1>
 </div>
 
 <div class="main">
 <svg></svg>
 </div> 
 
-<div class="right">Annotations</div>
+<div class="right">
+  <table>
+    <tr>
+      <th colspan=2>Legend</th>
+    </tr>
+    <tr>
+      <td>City MPG Average</td>
+      <td class="citympg"><pre>        </pre></td>
+    </tr>
+    <tr>
+      <td>Highway MPG Average</td>
+      <td class="highwaympg"><pre>        </pre></td>
+    </tr>
+  </table>
+</div>
 
-<div class="nav">&#x1F808; Back &nbsp; Forward &#x1F80A;</div>
+<div class="nav">
+  <p>
+    &#x1F808; Back
+    &nbsp;
+    <a href="scene2.html">Forward &#x1F80A;</a>
+  </p>
+</div>
+
 </div>
 
 </body>
